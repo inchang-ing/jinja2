@@ -960,21 +960,32 @@ class Environment:
             raise TypeError("no loader for this environment specified")
         cache_key = (weakref.ref(self.loader), name)
         if self.cache is not None:
-            template = self.cache.get(cache_key)
-            if template is not None and (
-                not self.auto_reload or template.is_up_to_date
-            ):
-                # template.globals is a ChainMap, modifying it will only
-                # affect the template, not the environment globals.
-                if globals:
-                    template.globals.update(globals)
+            try:
+                template = self.cache.get(cache_key)
+            except TypeError:
+                # The cache key is unhashable (e.g. ``name`` is not a string,
+                # which can happen when a dict is passed as the template name).
+                # Skip the cache rather than raising on an unusable key.
+                template = None
+            else:
+                if template is not None and (
+                    not self.auto_reload or template.is_up_to_date
+                ):
+                    # template.globals is a ChainMap, modifying it will only
+                    # affect the template, not the environment globals.
+                    if globals:
+                        template.globals.update(globals)
 
-                return template
+                    return template
 
         template = self.loader.load(self, name, self.make_globals(globals))
 
         if self.cache is not None:
-            self.cache[cache_key] = template
+            try:
+                self.cache[cache_key] = template
+            except TypeError:
+                # The cache key is unhashable, skip caching.
+                pass
         return template
 
     @internalcode

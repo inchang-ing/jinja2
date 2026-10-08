@@ -115,6 +115,25 @@ class TestLoaders:
         assert split_template_path("./foo/bar") == ["foo", "bar"]
         pytest.raises(TemplateNotFound, split_template_path, "../foo")
 
+    def test_unhashable_cache_key(self):
+        # Regression test for #2180: an unhashable ``name`` makes the cache key
+        # ``(weakref.ref(loader), name)`` unhashable. Jinja must skip the cache
+        # instead of raising ``TypeError`` during the cache lookup/store.
+        # ``name`` is a tuple containing a dict: unhashable (so the cache key
+        # fails to hash) but still a valid Python literal when Jinja embeds it
+        # in the generated module, so compilation succeeds.
+        class UnhashableNameLoader(loaders.BaseLoader):
+            def get_source(self, environment, template):
+                return "x", None, lambda: False
+
+        env = Environment(loader=UnhashableNameLoader(), cache_size=100)
+        bad_name = ({"request": "r"},)
+        # Must not raise ``TypeError`` from the cache lookup/store.
+        tmpl = env.get_template(bad_name)
+        assert tmpl.render().strip() == "x"
+        # The unhashable key cannot be cached, so the cache stays empty.
+        assert len(env.cache) == 0
+
 
 class TestFileSystemLoader:
     searchpath = (Path(__file__) / ".." / "res" / "templates").resolve()
